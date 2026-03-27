@@ -18,6 +18,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.cuda.amp import GradScaler, autocast
+from tqdm import tqdm
 
 # Allow imports from repo root
 ROOT = Path(__file__).parent.parent.parent
@@ -141,7 +142,8 @@ def main():
         total_loss = 0.0
         step = 0
 
-        for batch in train_loader:
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{args.epochs}", unit="batch")
+        for batch in pbar:
             area_target, b2b_conn, p2b_conn, pins_pos, constraints, \
                 _tree_sol, fp_sol, metrics = batch
 
@@ -187,6 +189,7 @@ def main():
             total_loss += loss.item()
             step += 1
 
+            pbar.set_postfix(loss=f"{total_loss/step:.4f}")
             if step % 500 == 0:
                 print(f"  Epoch {epoch+1} step {step}: loss={total_loss/step:.4f}")
 
