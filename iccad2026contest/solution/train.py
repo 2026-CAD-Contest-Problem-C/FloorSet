@@ -68,10 +68,13 @@ def validate(model, device):
     model.eval()
     val_loader = get_validation_dataloader(batch_size=1)
     total_loss = 0.0
+    component_sums = {}
     count = 0
     for batch in val_loader:
-        area_target, b2b_conn, p2b_conn, pins_pos, constraints, \
-            _tree_sol, fp_sol, metrics = batch
+        # validation collate returns [inputs_list, labels_list]
+        inputs, labels = batch
+        area_target, b2b_conn, p2b_conn, pins_pos, constraints = inputs
+        _fp_sol, metrics = labels
 
         area_target = area_target.squeeze(0).to(device)
         b2b_conn    = b2b_conn.squeeze(0).to(device)
@@ -87,15 +90,18 @@ def validate(model, device):
         positions = model(
             area_target[:N], b2b_conn, p2b_conn, pins_pos, constraints[:N]
         )
-        loss = compute_training_loss_differentiable(
+        loss, components = compute_training_loss_differentiable(
             positions, b2b_conn, p2b_conn, pins_pos,
             area_target[:N], metrics
         )
         total_loss += loss.item()
+        for k, v in components.items():
+            component_sums[k] = component_sums.get(k, 0.0) + v
         count += 1
 
+    avg_components = {k: v / max(count, 1) for k, v in component_sums.items()}
     model.train()
-    return total_loss / max(count, 1)
+    return total_loss / max(count, 1), avg_components
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +171,7 @@ def main():
                     positions = model(
                         area_target[:N], b2b_conn, p2b_conn, pins_pos, constraints[:N]
                     )
-                    loss = compute_training_loss_differentiable(
+                    loss, _ = compute_training_loss_differentiable(
                         positions, b2b_conn, p2b_conn, pins_pos,
                         area_target[:N], metrics
                     )
@@ -178,7 +184,7 @@ def main():
                 positions = model(
                     area_target[:N], b2b_conn, p2b_conn, pins_pos, constraints[:N]
                 )
-                loss = compute_training_loss_differentiable(
+                loss, _ = compute_training_loss_differentiable(
                     positions, b2b_conn, p2b_conn, pins_pos,
                     area_target[:N], metrics
                 )
@@ -194,8 +200,13 @@ def main():
                 print(f"  Epoch {epoch+1} step {step}: loss={total_loss/step:.4f}")
 
             if step % args.val_every == 0:
-                val_loss = validate(model, device)
+                val_loss, val_components = validate(model, device)
                 print(f"  [Val] step {step}: val_loss={val_loss:.4f} (best={best_val:.4f})")
+                print(f"        hpwl_gap={val_components['hpwl_gap']:.4f} "
+                      f"area_gap={val_components['area_gap']:.4f} "
+                      f"overlap={val_components['overlap_violation']:.4f} "
+                      f"V_soft={val_components['V_soft']:.4f} "
+                      f"violation_factor={val_components['violation_factor']:.4f}")
                 if val_loss < best_val:
                     best_val = val_loss
                     torch.save({

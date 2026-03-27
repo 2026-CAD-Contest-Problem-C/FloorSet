@@ -86,7 +86,7 @@ def main():
         # Same formula as actual evaluation!
         # Cost = (1 + α·(HPWL_gap + Area_gap)) × exp(β·V_soft)
         # =================================================================
-        loss = compute_training_loss_differentiable(
+        loss, _ = compute_training_loss_differentiable(
             positions,
             b2b_conn,
             p2b_conn,

@@ -29,7 +29,7 @@ def solve(self, block_count, area_targets, b2b_connectivity,
 
 **約束說明：**
 
-- **Fixed**：形狀須符合目標多邊形，但可平移或旋轉
+- **Fixed**：形狀須符合目標多邊形ji3，但可平移或旋轉
 - **Preplaced**：形狀與位置均須固定
 - **MIB（Multi-Instantiation Block）**：同 group ID 的 block 須共用相同形狀
 - **Cluster**：同 group ID 的 block 的多邊形聯集須為連通多邊形
@@ -190,17 +190,14 @@ Baseline **不處理**下列約束，參賽者可從此處著手改進：
 ## 三、快速開始
 
 ```bash
-# 複製 template 並實作你的演算法
-cp iccad2026contest/optimizer_template.py iccad2026contest/my_optimizer.py
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
 
 # 在 my_optimizer.py 中修改 solve() 方法
 
+# 3. Install dependencies
+pip install -r iccad2026contest/requirements.txt
+
 # 對 validation set 評分
 python iccad2026contest/iccad2026_evaluate.py --evaluate iccad2026contest/my_optimizer.py
-
-# 單一測試案例 debug（0–99）
-python iccad2026contest/iccad2026_evaluate.py --evaluate iccad2026contest/my_optimizer.py --test-id 0
-
-# 提交前格式驗證
-python iccad2026contest/iccad2026_evaluate.py --validate iccad2026contest/my_optimizer.py
 ```

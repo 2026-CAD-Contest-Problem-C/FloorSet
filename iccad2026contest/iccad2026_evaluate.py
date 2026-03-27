@@ -1005,27 +1005,38 @@ def compute_training_loss_differentiable(
     cy = y + h / 2
     
     # =========================================================================
-    # 1. HPWL (Half-Perimeter Wirelength) - Differentiable
+    # 1. HPWL (Half-Perimeter Wirelength) - Differentiable (vectorized)
     # =========================================================================
-    hpwl_b2b = torch.tensor(0.0, device=positions.device, dtype=positions.dtype)
+    # b2b: gather all valid edges and compute in one batch
     valid_b2b = b2b_connectivity[b2b_connectivity[:, 0] >= 0]
-    for edge in valid_b2b:
-        i, j, weight = int(edge[0]), int(edge[1]), edge[2]
-        if i < N and j < N:
-            dx = torch.abs(cx[i] - cx[j])
-            dy = torch.abs(cy[i] - cy[j])
-            hpwl_b2b = hpwl_b2b + weight * (dx + dy)
-    
-    hpwl_p2b = torch.tensor(0.0, device=positions.device, dtype=positions.dtype)
+    if valid_b2b.numel() > 0:
+        i_idx = valid_b2b[:, 0].long()
+        j_idx = valid_b2b[:, 1].long()
+        w_b2b = valid_b2b[:, 2]
+        mask_b2b = (i_idx < N) & (j_idx < N)
+        i_idx, j_idx, w_b2b = i_idx[mask_b2b], j_idx[mask_b2b], w_b2b[mask_b2b]
+        dx = (cx[i_idx] - cx[j_idx]).abs()
+        dy = (cy[i_idx] - cy[j_idx]).abs()
+        hpwl_b2b = (w_b2b * (dx + dy)).sum()
+    else:
+        hpwl_b2b = torch.tensor(0.0, device=positions.device, dtype=positions.dtype)
+
+    # p2b: gather all valid edges and compute in one batch
     valid_p2b = p2b_connectivity[p2b_connectivity[:, 0] >= 0]
-    for edge in valid_p2b:
-        pin_idx, block_idx, weight = int(edge[0]), int(edge[1]), edge[2]
-        if pin_idx < pins_pos.shape[0] and block_idx < N:
-            pin_x, pin_y = pins_pos[pin_idx, 0], pins_pos[pin_idx, 1]
-            dx = torch.abs(cx[block_idx] - pin_x)
-            dy = torch.abs(cy[block_idx] - pin_y)
-            hpwl_p2b = hpwl_p2b + weight * (dx + dy)
-    
+    if valid_p2b.numel() > 0:
+        pin_idx = valid_p2b[:, 0].long()
+        blk_idx = valid_p2b[:, 1].long()
+        w_p2b   = valid_p2b[:, 2]
+        mask_p2b = (pin_idx < pins_pos.shape[0]) & (blk_idx < N)
+        pin_idx, blk_idx, w_p2b = pin_idx[mask_p2b], blk_idx[mask_p2b], w_p2b[mask_p2b]
+        pin_x = pins_pos[pin_idx, 0]
+        pin_y = pins_pos[pin_idx, 1]
+        dx = (cx[blk_idx] - pin_x).abs()
+        dy = (cy[blk_idx] - pin_y).abs()
+        hpwl_p2b = (w_p2b * (dx + dy)).sum()
+    else:
+        hpwl_p2b = torch.tensor(0.0, device=positions.device, dtype=positions.dtype)
+
     hpwl_total = hpwl_b2b + hpwl_p2b
     
     # =========================================================================
@@ -1038,18 +1049,22 @@ def compute_training_loss_differentiable(
     bbox_area = (x_max - x_min) * (y_max - y_min)
     
     # =========================================================================
-    # 3. Overlap Violation (Differentiable) - Sum of overlap areas
+    # 3. Overlap Violation (Differentiable) - Sum of overlap areas (vectorized)
     # =========================================================================
-    overlap_area = torch.tensor(0.0, device=positions.device, dtype=positions.dtype)
-    for i in range(N):
-        for j in range(i + 1, N):
-            # Overlap dimensions (clamped to 0 with ReLU for differentiability)
-            xi1, yi1, wi, hi = x[i], y[i], w[i], h[i]
-            xj1, yj1, wj, hj = x[j], y[j], w[j], h[j]
-            
-            overlap_x = torch.relu(torch.min(xi1 + wi, xj1 + wj) - torch.max(xi1, xj1))
-            overlap_y = torch.relu(torch.min(yi1 + hi, yj1 + hj) - torch.max(yi1, yj1))
-            overlap_area = overlap_area + overlap_x * overlap_y
+    # Broadcast [N,1] vs [1,N] to compute all N×N pairs at once, then take upper triangle
+    x_r = x.unsqueeze(0)        # [1, N]
+    x_l = x.unsqueeze(1)        # [N, 1]
+    w_r = w.unsqueeze(0)
+    w_l = w.unsqueeze(1)
+    y_r = y.unsqueeze(0)
+    y_l = y.unsqueeze(1)
+    h_r = h.unsqueeze(0)
+    h_l = h.unsqueeze(1)
+
+    overlap_x = torch.relu(torch.minimum(x_l + w_l, x_r + w_r) - torch.maximum(x_l, x_r))
+    overlap_y = torch.relu(torch.minimum(y_l + h_l, y_r + h_r) - torch.maximum(y_l, y_r))
+    # triu(1): only upper triangle to count each pair once
+    overlap_area = (overlap_x * overlap_y).triu(1).sum()
     
     # Normalize by total block area
     total_block_area = (w * h).sum()
@@ -1092,8 +1107,16 @@ def compute_training_loss_differentiable(
     violation_factor = torch.exp(BETA * V_soft)
     
     cost = quality_factor * violation_factor
-    
-    return cost
+
+    return cost, {
+        'hpwl_gap': hpwl_gap.item(),
+        'area_gap': area_gap.item(),
+        'overlap_violation': overlap_violation.item(),
+        'area_violation': area_violation.item(),
+        'V_soft': V_soft.item(),
+        'quality_factor': quality_factor.item(),
+        'violation_factor': violation_factor.item(),
+    }
 
 
 def compute_training_loss_batch(
