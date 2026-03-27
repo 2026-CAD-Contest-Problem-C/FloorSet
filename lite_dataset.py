@@ -42,9 +42,10 @@ def download_dataset(root):
                 f.write(chunk)
     print("Downloaded floorplan data to", f_name)
     print("Unpacking. This may take a while")
-    file = tarfile.open(f_name)
-    file.extractall(root)
-    file.close()
+    with tarfile.open(f_name) as file:
+        members = file.getmembers()
+        for member in tqdm(members, desc="Unpacking", unit="file"):
+            file.extract(member, root)
     os.remove(f_name)
 
 
