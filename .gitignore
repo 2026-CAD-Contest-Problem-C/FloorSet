@@ -40,6 +40,10 @@ contest_venv/
 *_results.json
 *.log
 
+# Cache
+cache/
+*.png
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,0 +1,46 @@
+data:
+  dataset_path: '/home/syhuang'
+  train_data_path: '/home/syhuang/floorset_lite'
+  test_data_path: '/home/syhuang/FloorSet/LiteTensorDataTest'
+  cache_dir: '/tmp/floorset_cache'        # GNN pretraining: lite cache (~12KB/item)
+  rl_cache_dir: '/tmp/floorset_rl_cache'  # RL training: full cache (with block_meta)
+  num_workers: 4
+
+gnn:
+  hidden_dim: 128
+  num_layers: 3
+  dropout: 0.1
+  pretrain_lr: 1.0e-3
+  pretrain_epochs: 50
+  pretrain_batch: 64
+
+shape_policy:
+  hidden_dim: 256
+  log_r_min: -2.0
+  log_r_max: 2.0
+
+placement:
+  grid_size: 256
+  ppo_lr_actor: 3.0e-4
+  ppo_lr_critic: 1.0e-3
+  ppo_clip: 0.2
+  ppo_epochs: 4
+  entropy_coef: 0.01
+  value_coef: 0.5
+  gae_lambda: 0.95
+  gamma: 1.0
+  rollout_buf: 16
+  grad_clip: 0.5
+  freeze_gnn_steps: 5000
+
+reward:
+  alpha: 0.5
+  overlap_pen: -10.0
+
+curriculum:
+  stages:
+    - [21, 40]
+    - [41, 70]
+    - [71, 100]
+    - [101, 120]
+  replay_frac: 0.2
